@@ -19,6 +19,7 @@ class UserManager(BaseUserManager):
 
     def create_superuser(self, empid, email, password=None, **extra_fields):
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_staff', True) 
         return self.create_user(empid, email, password, **extra_fields)
 
 
@@ -28,15 +29,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=150)
     email = models.EmailField(max_length=255, unique=True)
     password = models.CharField(max_length=255)
-    
-    # Optional: explicitly adding these for admin visibility or control
     last_login = models.DateTimeField(blank=True, null=True)
     is_superuser = models.BooleanField(default=False)
+    is_staff = models.BooleanField(default=False)
 
     objects = UserManager()  
 
     USERNAME_FIELD = 'empid'
-    REQUIRED_FIELDS = ['password']
+    REQUIRED_FIELDS = ['email', 'password'] 
 
     def __str__(self):
         return self.empid

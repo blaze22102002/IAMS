@@ -4,3 +4,4 @@ django-cors-headers
 mysqlclient 
 djangorestframework
 djangorestframework-simplejwt
+csv

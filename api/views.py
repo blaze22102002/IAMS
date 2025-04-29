@@ -16,6 +16,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
+from django.db import IntegrityError
 
 
 class LoginView(APIView):
@@ -276,3 +277,56 @@ def asset_tag_generate(request):
 #         ])
 
 #     return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_asset(request):
+    try:
+        data = request.data
+        empid = data.get('empid')
+        branch_code = data.get('branch_code')
+
+        if not empid or not branch_code:
+            return Response({'error': 'empid and branch_code are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if the user exists
+        try:
+            user = User.objects.get(empid=empid)
+        except User.DoesNotExist:
+            return Response({'error': 'User with this empid does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if branch exists
+        try:
+            branch = Branch.objects.get(branch_code=branch_code)
+        except Branch.DoesNotExist:
+            return Response({'error': 'Branch with this code does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+      
+        if branch.user != user:
+            return Response({'error': 'User does not have permission to add assets for this branch.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Create asset
+        asset = Asset.objects.create(
+            asset_id=data.get('asset_id'),
+            branch=branch,
+            employee_id=data.get('employee_id'),
+            employee_name=data.get('employee_name'),
+            group=data.get('group'),
+            business_impact=data.get('business_impact'),
+            asset_tag=data.get('asset_tag'),
+            description=data.get('description', ''),
+            product_name=data.get('product_name'),
+            serial_number=data.get('serial_number'),
+            remarks=data.get('remarks', ''),
+            status=data.get('status'),
+            it_poc_remarks=data.get('it_poc_remarks', '')
+        )
+
+        return Response({'message': 'Asset created successfully!', 'asset_id': asset.asset_id}, status=status.HTTP_201_CREATED)
+    
+    except IntegrityError:
+        return Response({'error': 'Asset with this ID or tag already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
