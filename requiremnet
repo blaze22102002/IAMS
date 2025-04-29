@@ -5,3 +5,4 @@ mysqlclient
 djangorestframework
 djangorestframework-simplejwt
 csv
+mysql-connector-python pandas

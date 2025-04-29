@@ -1,14 +1,15 @@
-# newuser.py
 import os
 import django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Backend.settings')  
-django.setup()
-
+import pandas as pd
+import uuid
 from django.contrib.auth.hashers import make_password
 from api.models import User
-import uuid
 
-def create_user(empid,name, email, plain_password):
+# Setup Django environment
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Backend.settings')  # Replace with your actual project name
+django.setup()
+
+def create_user(empid, name, email, plain_password):
     try:
         hashed_password = make_password(plain_password)  # Hash the password
         user = User.objects.create(
@@ -22,5 +23,10 @@ def create_user(empid,name, email, plain_password):
     except Exception as e:
         print("Error creating user:", e)
 
-# Call the function to create a new user
-create_user("test2","test222", "test1@gmail.com", "pass23")
+# Read the CSV file
+csv_file = r"C:\Users\bbnit\Downloads\users.csv"  # Update with the correct path to your CSV file
+df = pd.read_csv(csv_file)
+
+# Loop through each row in the CSV and create users
+for _, row in df.iterrows():
+    create_user(row['empid'], row['name'], row['email'], row['password'])
