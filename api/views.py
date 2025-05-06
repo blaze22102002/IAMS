@@ -4,64 +4,94 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from rest_framework.permissions import AllowAny
-from .models import User, Asset,Branch
+from .models import User, Asset,Branch,Admin
 from .serializers import AssetSerializer
 import requests
 from rest_framework.decorators import api_view, permission_classes
 from django.db import connection
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.conf import settings
 from rest_framework.response import Response
-from rest_framework_simplejwt.exceptions import InvalidToken
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
-from django.http import HttpResponse
+from django.contrib.auth import authenticate, get_user_model
 from django.db import IntegrityError
+from django.core.mail import send_mail
+from django.core.cache import cache
+from django.http import JsonResponse
+import random
+import string
+from django.utils import timezone
 
 
+User = get_user_model()
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        empid = request.data.get("empid")
+        identifier = request.data.get("empid")  # Could be empid or email
         password = request.data.get("password")
+        otp = request.data.get("otp")  # Optional on first call
 
-        # Authenticate the user
-        user = authenticate(request, username=empid, password=password)
+        if not identifier or not password:
+            return Response({"detail": "empid/email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if user is not None:
-          
-            refresh = RefreshToken.for_user(user)
-            access_token = str(refresh.access_token)
-            refresh_token = str(refresh)
-
-       
-            response = JsonResponse({
-                'message': 'Login successful.',
-                'empid': user.empid ,
-                  'access': access_token,
-                  'refresh': refresh_token
-                  
-            })
-            # Set Access Token in cookie
-            response.set_cookie(
-                'access_token', access_token,
-                httponly=True,
-                secure=True, 
-                max_age=5*60,  
-                samesite='Strict'
-            )
-            # Set Refresh Token in cookie
-            response.set_cookie(
-                'refresh_token', refresh_token,
-                httponly=True,
-                secure=True, 
-                max_age=24*60*60,  
-                samesite='Strict'
-            )
-            return response
-        else:
+        # Authenticate credentials
+        user = authenticate(request, username=identifier, password=password)
+        if user is None:
             return Response({"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Check if OTP is provided
+        if not otp:
+            # First step: generate and send OTP
+            generated_otp = ''.join(random.choices(string.digits, k=6))
+            cache.set(f"otp_{user.empid}", generated_otp, timeout=300)  
+            from_email = 'no-reply@example.com' 
+
+            # Send email
+            send_mail(
+                subject='Your OTP for Login',
+                message=f'Your OTP is {generated_otp}. It is valid for 5 minutes.',
+                from_email=from_email,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+
+            return Response({"detail": "OTP sent to registered email. Please verify.", "empid": user.empid}, status=status.HTTP_200_OK)
+
+    
+        cached_otp = cache.get(f"otp_" + user.empid)
+        if cached_otp != otp:
+            return Response({"detail": "Invalid or expired OTP"}, status=status.HTTP_401_UNAUTHORIZED)
+
+      
+        refresh = RefreshToken.for_user(user)
+        refresh['username'] = user.empid
+        refresh['role'] = 'admin' if user.is_superuser else 'user'
+
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = JsonResponse({
+            'message': 'Login successful.',
+            'username': user.empid,
+            'role': refresh['role'],
+            'access': access_token,
+            'refresh': refresh_token
+        })
+
+        # Set secure HTTP-only cookies
+        response.set_cookie('access_token', access_token, httponly=True, secure=True, max_age=5 * 60, samesite='Strict')
+        response.set_cookie('refresh_token', refresh_token, httponly=True, secure=True, max_age=24 * 60 * 60, samesite='Strict')
+
+        user.last_login = timezone.now()
+        user.save()
+
+        # Clear OTP from cache after success
+        cache.delete(f"otp_{user.empid}")
+
+        return response
+
+    
 class AssetWebhookView(APIView):
     def post(self, request):
         try:
@@ -102,33 +132,52 @@ class AssetWebhookView(APIView):
         return Response({"message": "Assets created or updated successfully."}, status=status.HTTP_200_OK)
     
 
-@api_view(['GET','POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def filter_branch(request):
     user = request.user
 
     branch_code = request.query_params.get('branch_code') or request.data.get('branch_code')
     print(branch_code)
-   
     
     if not branch_code:
         return Response({"error": "branch_code is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT branch.id 
-            FROM api_branch AS branch
-            INNER JOIN api_user AS user ON branch.user_id = user.uid
-            WHERE branch.branch_code = %s AND user.empid = %s
-        """, [branch_code, user.empid])
-        branch_row = cursor.fetchone()
+    # Check if user is admin or not
+    is_admin = user.role == 'admin'  
 
-    if not branch_row:
-        return Response({"error": "Unauthorized: You don’t have access to this branch."}, status=status.HTTP_403_FORBIDDEN)
+    branch_id = None
+    if not is_admin:
+      
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT branch.id
+                FROM api_branch AS branch
+                INNER JOIN api_user AS user ON branch.user_id = user.uid
+                WHERE branch.branch_code = %s AND user.empid = %s
+            """, [branch_code, user.empid])
+            branch_row = cursor.fetchone()
 
-    branch_id = branch_row[0]
+        if not branch_row:
+            return Response({"error": "Unauthorized: You don’t have access to this branch."}, status=status.HTTP_403_FORBIDDEN)
 
-    # Fetch assets
+        branch_id = branch_row[0]
+    else:
+      
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT branch.id
+                FROM api_branch AS branch
+                WHERE branch.branch_code = %s
+            """, [branch_code])
+            branch_row = cursor.fetchone()
+
+        if not branch_row:
+            return Response({"error": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        branch_id = branch_row[0]
+
+    # Fetch assets for the determined branch_id
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT 
@@ -143,11 +192,11 @@ def filter_branch(request):
         columns = [col[0] for col in cursor.description]
         assets = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-
+   
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT
-                COUNT(IF(`group` = 'Laptop', 1, NULL))    AS laptop,
+                COUNT(IF(`group` = 'Laptop', 1, NULL)) AS laptop,
                 COUNT(IF(`group` = 'Biometric', 1, NULL)) AS biometric,
                 COUNT(IF(`group` = 'ThinClient', 1, NULL)) AS thinclient
             FROM api_asset
@@ -159,6 +208,7 @@ def filter_branch(request):
         return Response({"message": f"No assets found for branch_code '{branch_code}'"}, status=status.HTTP_404_NOT_FOUND)
 
     return Response({
+        "branch_code": branch_code,
         "assets": assets,
         "counts": counts
     }, status=status.HTTP_200_OK)

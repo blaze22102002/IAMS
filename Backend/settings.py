@@ -38,20 +38,22 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     'rest_framework',
-    'api',
     "corsheaders",
     "rest_framework_simplejwt",
+    "api.apps.ApiConfig"
   
 
 ]
-# Email settings for sending OTPs
+
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'  # Or your SMTP provider
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'b@gmail.com'
-# EMAIL_HOST_PASSWORD = 'your_email_password'
-# DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True  # Corrected key
+EMAIL_HOST_USER = 'bbnithin2002@gmail.com'
+EMAIL_HOST_PASSWORD = 'sulqglqiigolwwri'  # App password
+
+
+
 
 
 MIDDLEWARE = [
