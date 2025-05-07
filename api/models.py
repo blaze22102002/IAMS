@@ -5,6 +5,8 @@ from django.contrib.auth.models import BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.utils import timezone
 
+
+
 class UserManager(BaseUserManager):
     def get_by_natural_key(self, empid):
         return self.get(empid=empid)

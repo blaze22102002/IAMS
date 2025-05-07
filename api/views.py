@@ -21,7 +21,7 @@ from django.http import JsonResponse
 import random
 import string
 from django.utils import timezone
-
+from django.db import transaction
 
 User = get_user_model()
 class LoginView(APIView):
@@ -380,3 +380,4 @@ def add_asset(request):
     
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
