@@ -13,8 +13,8 @@ from django.contrib.auth import authenticate
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.utils import timezone
-
-
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -65,19 +65,113 @@ class BranchFilterView(APIView):
         branch = None
 
         if not is_admin:
-            # Check if the user has access to this branch
+           
             try:
                 branch = Branch.objects.get(branch_code=branch_code, user=user)
             except Branch.DoesNotExist:
                 return Response({"error": "Unauthorized: You don’t have access to this branch."}, status=status.HTTP_403_FORBIDDEN)
         else:
-            # Admin can access any branch
+            
             branch = get_object_or_404(Branch, branch_code=branch_code)
 
-        # Fetch assets for the determined branch
+      
         assets = Asset.objects.filter(branch=branch)
 
         if not assets:
             return Response({"message": f"No assets found for branch_code '{branch_code}'"}, status=status.HTTP_404_NOT_FOUND)
 
-        
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def asset_tag_generate(request):
+    branch_code = request.data.get('branch_code')
+    ownership = request.data.get('ownership')
+    group = request.data.get('group')
+    serial_number = request.data.get('serial_number')
+
+    if not (branch_code and ownership and group):
+        return Response({"detail": "Missing required fields."}, status=400)
+
+    middle_code = 'UST' if ownership == "UST" else 'MPG'
+
+    group_map = {
+        'SDWAN': 'SDW',
+        'Switch': 'SWT',
+        'Monitor': 'MON',
+        'Modem': 'MOD',
+        'DotMatrix': 'PTR',
+        'All in One': 'AIO',
+        'Laser': 'LSRPTR',
+        'Inkjet': 'INJPTR',
+        'Webcam': 'WCM',
+        'UPS': 'UPS',
+        'Datacard': 'DC'
+    }
+
+    try:
+        branch = Branch.objects.get(branch_code=branch_code)
+    except Branch.DoesNotExist:
+        return Response({"detail": "Invalid branch code."}, status=404)
+
+    branch_code_upper = branch_code.upper()
+
+    if group not in group_map:
+        return Response({"detail": "Invalid group."}, status=400)
+
+    last_asset = Asset.objects.filter(branch=branch, group=group).order_by('-asset_tag').first()
+    last_asset_tag = last_asset.asset_tag if last_asset else None
+
+    if group == 'Webcam':
+        prefix = f"MPG-{branch_code_upper}"
+        if last_asset_tag:
+            last_number = int(last_asset_tag.split('-')[-1])
+            new_number = str(last_number + 1).zfill(3)
+        else:
+            new_number = '001'
+        new_asset_tag = f"{prefix}-{new_number}"
+
+    elif group == 'Datacard':
+        prefix = f"{middle_code}-{branch_code_upper}"
+        if last_asset_tag:
+            last_number = int(last_asset_tag.split('-')[-1])
+            new_number = str(last_number + 1).zfill(3)
+        else:
+            new_number = '001'
+        new_asset_tag = f"{prefix}-{new_number}"
+
+    elif group == 'UPS':
+        prefix = f"MUTMPG-{branch_code_upper}"
+        if last_asset_tag:
+            last_number = int(last_asset_tag.split('-')[-1])
+            new_number = str(last_number + 1).zfill(3)
+        else:
+            new_number = '001'
+        new_asset_tag = f"{prefix}-{new_number}"
+
+    else:
+        t = group_map[group]
+        if last_asset_tag:
+            parts = last_asset_tag.split('-')
+
+            if group == 'Modem':
+                parts[1] = middle_code
+            elif group == 'SDWAN':
+                parts[1] = 'UST'
+            else:
+                parts[1] = 'MPG'
+
+            last_number = int(parts[-1])
+            parts[-1] = str(last_number + 1).zfill(3)
+            new_asset_tag = '-'.join(parts)
+        else:
+            if group == 'Modem':
+                middle_code = middle_code
+            elif group == 'SDWAN':
+                middle_code = 'UST'
+            else:
+                middle_code = 'MPG'
+
+            new_asset_tag = f"USTMUT-{middle_code}-{branch_code_upper}-{t}-001"
+
+    return Response({
+        "new_asset_tag": new_asset_tag
+    })

@@ -7,9 +7,12 @@ from django.contrib.auth import authenticate
 from django.http import JsonResponse
 from django.utils import timezone
 
+from django.views.decorators.csrf import csrf_exempt
+
 class AdminLoginView(APIView):
     permission_classes = [AllowAny]
 
+    @csrf_exempt
     def post(self, request):
         identifier = request.data.get("empid")
         password = request.data.get("password")
