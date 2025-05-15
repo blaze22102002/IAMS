@@ -78,6 +78,71 @@ class Asset(models.Model):
 
     def __str__(self):
         return f"{self.asset_tag} - {self.serial_number}"
+    
+    def save(self, *args, **kwargs):
+        # Check if the asset is being updated (i.e., it has an existing primary key `pk`)
+        is_update = self.pk is not None
+
+        # Save the asset in the Asset table (original table)
+        super().save(*args, **kwargs)
+
+        # If it's an update, copy this asset to AssetAddition table
+        if is_update:
+            # Create a new entry in AssetAddition with the same data
+            asset_addition = AssetAddition(
+                asset_id=self.asset_id,
+                branch=self.branch,
+                employee_id=self.employee_id,
+                employee_name=self.employee_name,
+                group=self.group,
+                business_impact=self.business_impact,
+                asset_tag=self.asset_tag,
+                description=self.description,
+                product_name=self.product_name,
+                serial_number=self.serial_number,
+                remarks=self.remarks,
+                status=self.status,
+                it_poc_remarks=self.it_poc_remarks
+            )
+            asset_addition.save()
+    
+
+class AssetAddition(models.Model):
+    asset_id = models.CharField(max_length=50, unique=True, blank=True)  # Make sure this is blank initially
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT)
+    employee_id = models.CharField(max_length=50)
+    employee_name = models.CharField(max_length=100)
+    group = models.CharField(max_length=100)
+    business_impact = models.CharField(max_length=100)
+    asset_tag = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    product_name = models.CharField(max_length=100)
+    serial_number = models.CharField(max_length=100)
+    remarks = models.TextField(blank=True)
+    status = models.CharField(max_length=100)
+    it_poc_remarks = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)  # Timestamp when the asset was added/updated
+
+    def __str__(self):
+        return f"{self.asset_tag} - {self.serial_number}"
+
+    def save(self, *args, **kwargs):
+        # Auto-generate asset_id if it doesn't already exist
+        if not self.asset_id:
+            # Get the last asset by asset_id and increment it
+            last_asset = AssetAddition.objects.order_by('-asset_id').first()
+            if last_asset:
+                # Extract the last numeric part and increment it
+                last_asset_number = int(last_asset.asset_id.split('-')[-1])
+                new_asset_number = last_asset_number + 1
+            else:
+                # If no assets exist, start from 1
+                new_asset_number = 1
+
+            # Format the asset_id (for example: "ASSET-001")
+            self.asset_id = f"ASSET-{str(new_asset_number).zfill(3)}"
+        
+        super().save(*args, **kwargs)
 
 
 class Admin(models.Model):
