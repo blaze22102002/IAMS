@@ -96,7 +96,7 @@ TEMPLATES = [
         },
     },
 ]
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+CSRF_TRUSTED_ORIGINS = [ 'http://localhost:5173']
 
 WSGI_APPLICATION = "Backend.wsgi.application"
 
@@ -105,10 +105,13 @@ CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',  
+    'http://localhost:5173'
 ]
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+CSRF_TRUSTED_ORIGINS = [ 'http://localhost:5173']
 
+SESSION_COOKIE_SAMESITE = 'Lax'  # or 'None' with Secure if using https
+SESSION_COOKIE_SECURE = False    # For localhost HTTP dev, set False
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases

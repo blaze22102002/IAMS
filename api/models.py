@@ -156,11 +156,13 @@ class Admin(models.Model):
     USERNAME_FIELD = 'empid'
     REQUIRED_FIELDS = ['email', 'password'] 
 
-    
-
-    
-
-
-
     def __str__(self):
         return self.empid
+
+# models.py
+class ProductModel(models.Model):
+    product_name = models.CharField(max_length=100)  # e.g., Webcam, Printer
+    model_name = models.CharField(max_length=100)    # e.g., C270, LX-310
+
+    def __str__(self):
+        return f"{self.product_name} - {self.model_name}"

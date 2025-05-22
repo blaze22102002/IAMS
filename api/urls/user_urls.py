@@ -3,8 +3,7 @@
 
 
 from django.urls import path
-from api.views.user_views import UserLoginView, BranchFilterView,asset_tag_generate,AssetAdditionView,AssetUpdateView,AssetExportStreamView
-
+from api.views.user_views import UserLoginView, BranchFilterView,asset_tag_generate,AssetAdditionView,AssetUpdateView,AssetExportStreamView,ProductModelListView,ExportBranchCSVView
 
 urlpatterns = [
     path('login/', UserLoginView.as_view(), name='user-login'),
@@ -13,5 +12,7 @@ urlpatterns = [
     path('asset/add/', AssetAdditionView.as_view(), name='asset-add'),
     path('asset/update/', AssetUpdateView.as_view(), name='asset-update'),
     path('asset/export/', AssetExportStreamView.as_view(), name='export-assets'),
+     path('models/', ProductModelListView.as_view(), name='product-model-list'),
+      path('exportbranch/', ExportBranchCSVView.as_view(), name='export-branch-csv'),
 
 ]

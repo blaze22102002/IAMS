@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from api.models import Asset, Branch, User,AssetAddition
+from api.models import Asset, Branch, User,AssetAddition,ProductModel
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,7 +13,7 @@ from django.contrib.auth import authenticate
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
-from ..serializers import AssetAdditionSerializer
+from ..serializers import AssetAdditionSerializer,ProductModelSerializer
 from ..serializers import AssetSerializer
 from django.http import HttpResponse
 import csv
@@ -63,13 +63,13 @@ class BranchFilterView(APIView):
         if not branch_code:
             return Response({"error": "branch_code is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Checking if the user is an admin or regular user
+        
         is_admin = user.role == 'admin'
         branch = None
 
         if not is_admin:
             try:
-                # Regular users should only access their branch
+               
                 branch = Branch.objects.get(branch_code=branch_code, user=user)
             except Branch.DoesNotExist:
                 return Response({"error": "Unauthorized: You don’t have access to this branch."}, status=status.HTTP_403_FORBIDDEN)
@@ -84,9 +84,19 @@ class BranchFilterView(APIView):
 
         # Serialize the asset data
         serializer = AssetSerializer(assets, many=True)
+        total_count = assets.count()
+        monitor_count = assets.filter(group__iexact="IT").count()
+        
+        response_data = {
+            "branch_code": branch.branch_code,
+            "branch_name": branch.branch_name,
+            "assets": serializer.data,
+            "All asset":total_count,
+            "monitor":monitor_count
+        }
 
-        # Return a list of serialized asset data
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def asset_tag_generate(request):
@@ -210,7 +220,7 @@ class AssetAdditionView(APIView):
             last_asset_number = int(last_asset.asset_id.split('-')[-1])
             new_asset_number = str(last_asset_number + 1).zfill(3)  # Increment and pad with zeros (e.g., ASSET-BR001-002)
         else:
-            new_asset_number = '001'  # If no assets, start from 001
+            new_asset_number = '001'  
 
         new_asset_id = f"ASSET-{branch.branch_code}-{new_asset_number}"
 
@@ -231,7 +241,7 @@ class AssetAdditionView(APIView):
             it_poc_remarks=asset_data.get('it_poc_remarks', ''), 
         )
 
-        # Serialize and return the newly created asset addition object
+        
         serializer = AssetAdditionSerializer(asset_addition)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -326,3 +336,66 @@ class AssetExportStreamView(APIView):
             ])
 
         return response
+    
+
+class ExportBranchCSVView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        branch_code = request.query_params.get('branch_code')
+
+        if not branch_code:
+            return Response({"error": "branch_code is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        is_admin = user.role == 'admin'
+
+        if is_admin:
+            branch = get_object_or_404(Branch, branch_code=branch_code)
+        else:
+            try:
+                branch = Branch.objects.get(branch_code=branch_code, user=user)
+            except Branch.DoesNotExist:
+                return Response({"error": "Unauthorized access to this branch."}, status=status.HTTP_403_FORBIDDEN)
+
+        assets = Asset.objects.filter(branch=branch)
+
+        # Prepare CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{branch_code}_assets.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+        'Asset ID', 'Employee ID', 'Employee Name', 'Group', 'Business Impact',
+        'Asset Tag', 'Description', 'Product Name', 'Serial Number',
+        'Remarks', 'Status', 'IT POC Remarks', 'Branch Code'
+    ])
+
+    
+        for asset in assets:
+            writer.writerow([
+                asset.asset_id,
+                asset.employee_id,
+                asset.employee_name,
+                asset.group,
+                asset.business_impact,
+                asset.asset_tag,
+                asset.description,
+                asset.product_name,
+                asset.serial_number,
+                asset.remarks,
+                asset.status,
+                asset.it_poc_remarks,
+                asset.branch.branch_code  # Assuming ForeignKey to Branch
+            ])
+
+        return response
+    
+class ProductModelListView(APIView):
+    def get(self, request):
+        product_name = request.query_params.get('product_name')
+        if not product_name:
+            return Response({"error": "product_name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        models = ProductModel.objects.filter(product_name__iexact=product_name).values_list('model_name', flat=True)
+        return Response(list(models), status=status.HTTP_200_OK)
